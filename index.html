@@ -890,24 +890,21 @@ body {
    LOGIN OVERLAY - FORCED VISIBLE
    ============================================================ */
 #loginOverlay {
-  position: fixed !important;
-  inset: 0 !important;
-  z-index: 9999 !important;
-  display: flex !important;
-  align-items: center !important;
-  justify-content: center !important;
-  background: var(--bg) !important;
-  padding: 20px !important;
-  opacity: 1 !important;
-  transform: scale(1) !important;
-  pointer-events: auto !important;
-  transition: opacity 0.5s ease, transform 0.5s ease;
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg);
+  padding: 20px;
+  opacity: 1;
+  pointer-events: auto;
+  transition: opacity 0.6s ease;
 }
 
 #loginOverlay.hidden {
-  display: none !important;
-  opacity: 0 !important;
-  pointer-events: none !important;
+  display: none;
 }
 
 .login-container {
@@ -1206,28 +1203,47 @@ body {
             display: block;
             margin-bottom: 8px;
           ">Password</label>
-          <input
-            type="password"
-            id="passwordDirect"
-            style="
-              width: 100%;
-              padding: 14px 16px;
-              border-radius: 20px;
-              border: 1.5px solid rgba(0,0,0,0.06);
-              background: #fafafc;
-              font-family: 'Inter', sans-serif;
-              font-size: 15px;
-              font-weight: 500;
-              color: #0f0f11;
-              outline: none;
-              box-sizing: border-box;
-            "
-            placeholder="••••••••"
-            autocomplete="current-password"
-          >
+          <div style="position: relative;">
+            <input
+              type="password"
+              id="passwordDirect"
+              style="
+                width: 100%;
+                padding: 14px 46px 14px 16px;
+                border-radius: 20px;
+                border: 1.5px solid rgba(0,0,0,0.06);
+                background: #fafafc;
+                font-family: 'Inter', sans-serif;
+                font-size: 15px;
+                font-weight: 500;
+                color: #0f0f11;
+                outline: none;
+                box-sizing: border-box;
+              "
+              placeholder="••••••••"
+              autocomplete="current-password"
+            >
+            <button type="button" onclick="togglePassword()" style="
+              position: absolute;
+              right: 14px;
+              top: 50%;
+              transform: translateY(-50%);
+              background: none;
+              border: none;
+              cursor: pointer;
+              padding: 4px;
+              color: #9a9aa3;
+              display: flex;
+              align-items: center;
+              justify-content: center;
+            " id="togglePwBtn">
+              <svg id="eyeIcon" xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+              <svg id="eyeOffIcon" xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:none"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
+            </button>
+          </div>
         </div>
 
-        <button type="submit" style="
+        <button type="submit" id="loginSubmitBtn" style="
           width: 100%;
           padding: 16px 24px;
           border-radius: 50px;
@@ -1242,10 +1258,21 @@ body {
           align-items: center;
           justify-content: center;
           gap: 8px;
-          box-shadow: 0 3px 8px rgba(0,0,0,0.07);
-        ">
-          <span>Sign In</span>
-          <span style="font-size:18px;">→</span>
+          box-shadow: 0 4px 0 #000000, 0 6px 16px rgba(0,0,0,0.25);
+          transform: translateY(0px);
+          transition: transform 0.08s ease, box-shadow 0.08s ease, background 0.15s ease;
+          -webkit-tap-highlight-color: transparent;
+          user-select: none;
+          margin-top: 8px;
+        "
+        onmousedown="this.style.transform='translateY(3px)';this.style.boxShadow='0 1px 0 #000000, 0 2px 8px rgba(0,0,0,0.2)'"
+        onmouseup="this.style.transform='translateY(0px)';this.style.boxShadow='0 4px 0 #000000, 0 6px 16px rgba(0,0,0,0.25)'"
+        onmouseleave="this.style.transform='translateY(0px)';this.style.boxShadow='0 4px 0 #000000, 0 6px 16px rgba(0,0,0,0.25)'"
+        ontouchstart="this.style.transform='translateY(3px)';this.style.boxShadow='0 1px 0 #000000, 0 2px 8px rgba(0,0,0,0.2)'"
+        ontouchend="this.style.transform='translateY(0px)';this.style.boxShadow='0 4px 0 #000000, 0 6px 16px rgba(0,0,0,0.25)'"
+        >
+          <span id="loginBtnText">Sign In</span>
+          <span id="loginBtnArrow" style="font-size:18px;">→</span>
         </button>
       </form>
 
@@ -1261,15 +1288,160 @@ body {
     </div>
   </div>
 
+  <!-- Full-screen loading screen -->
+  <div id="loadingScreen" style="
+    display: none;
+    position: fixed;
+    inset: 0;
+    z-index: 99998;
+    background: #f0f0f3;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 0;
+    opacity: 0;
+    transition: opacity 0.3s ease;
+  ">
+    <!-- Top decorative bar matching login card -->
+    <div style="position: absolute; top: 0; left: 0; right: 0; height: 4px; background: #c9a96e;"></div>
+
+    <!-- Center content -->
+    <div style="display: flex; flex-direction: column; align-items: center; gap: 20px;">
+      <!-- Brand icon -->
+      <div style="
+        width: 72px;
+        height: 72px;
+        border-radius: 22px;
+        background: #1a1a1e;
+        color: #ffffff;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 32px;
+        box-shadow: 0 8px 20px rgba(0,0,0,0.15);
+        animation: loadingPulse 1.5s ease-in-out infinite;
+      ">📦</div>
+
+      <!-- App name -->
+      <div style="text-align: center;">
+        <div style="
+          font-family: 'Inter', sans-serif;
+          font-size: 22px;
+          font-weight: 800;
+          letter-spacing: -0.5px;
+          color: #0f0f11;
+          margin-bottom: 4px;
+        ">Delivery Hub</div>
+        <div id="loadingText" style="
+          font-family: 'Inter', sans-serif;
+          font-size: 13px;
+          font-weight: 600;
+          color: #9a9aa3;
+          transition: opacity 0.2s ease;
+        ">Authenticating...</div>
+      </div>
+
+      <!-- Progress bar -->
+      <div style="
+        width: 200px;
+        height: 4px;
+        background: rgba(0,0,0,0.08);
+        border-radius: 4px;
+        overflow: hidden;
+        margin-top: 4px;
+      ">
+        <div id="loadingBar" style="
+          height: 100%;
+          width: 0%;
+          background: linear-gradient(90deg, #c9a96e, #e8c98a);
+          border-radius: 4px;
+          transition: width 0.4s cubic-bezier(0.25, 1, 0.5, 1);
+        "></div>
+      </div>
+    </div>
+
+    <!-- Bottom copyright -->
+    <div style="
+      position: absolute;
+      bottom: 32px;
+      font-family: 'Inter', sans-serif;
+      font-size: 12px;
+      font-weight: 600;
+      color: #c4c4ca;
+    ">Kitchen Delivery Hub © 2026</div>
+
+    <style>
+      @keyframes loadingPulse {
+        0%, 100% { transform: scale(1); box-shadow: 0 8px 20px rgba(0,0,0,0.15); }
+        50% { transform: scale(1.05); box-shadow: 0 12px 28px rgba(0,0,0,0.22); }
+      }
+    </style>
+  </div>
+
   <script>
-    // Direct login handler for the forced login
+    function togglePassword() {
+      var input = document.getElementById('passwordDirect');
+      var eyeOn = document.getElementById('eyeIcon');
+      var eyeOff = document.getElementById('eyeOffIcon');
+      if (input.type === 'password') {
+        input.type = 'text';
+        eyeOn.style.display = 'none';
+        eyeOff.style.display = 'block';
+      } else {
+        input.type = 'password';
+        eyeOn.style.display = 'block';
+        eyeOff.style.display = 'none';
+      }
+    }
+
     function handleLoginDirect(event) {
       event.preventDefault();
-      // Hide the forced login
-      const overlay = document.getElementById('loginOverlay');
-      overlay.style.display = 'none';
+
+      var overlay = document.getElementById('loginOverlay');
+      var loader = document.getElementById('loadingScreen');
+      var bar = document.getElementById('loadingBar');
+      var loadText = document.getElementById('loadingText');
+
+      // 1. Instantly hide login overlay (no slow fade - just gone)
+      overlay.style.transition = 'opacity 0.25s ease';
       overlay.style.opacity = '0';
       overlay.style.pointerEvents = 'none';
+
+      // 2. Show loading screen right away
+      loader.style.display = 'flex';
+      setTimeout(function() { loader.style.opacity = '1'; }, 10);
+
+      // Hide login overlay from layout after its quick fade
+      setTimeout(function() {
+        overlay.classList.add('hidden');
+      }, 250);
+
+      // 3. Animate progress bar over 2 seconds
+      var steps = [
+        { w: 25,  t: 0,    label: 'Authenticating...' },
+        { w: 55,  t: 600,  label: 'Loading data...' },
+        { w: 80,  t: 1200, label: 'Almost ready...' },
+        { w: 100, t: 1700, label: 'Welcome!' }
+      ];
+      steps.forEach(function(s) {
+        setTimeout(function() {
+          bar.style.width = s.w + '%';
+          loadText.style.opacity = '0';
+          setTimeout(function() {
+            loadText.textContent = s.label;
+            loadText.style.opacity = '1';
+          }, 100);
+        }, s.t);
+      });
+
+      // 4. After 2s, fade out loading screen → dashboard is already visible underneath
+      setTimeout(function() {
+        loader.style.transition = 'opacity 0.4s ease';
+        loader.style.opacity = '0';
+        setTimeout(function() {
+          loader.style.display = 'none';
+        }, 400);
+      }, 2000);
     }
   </script>
 
