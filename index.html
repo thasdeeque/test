@@ -1273,104 +1273,8 @@ body {
     }
   </script>
 
-  <!-- LOGIN OVERLAY -->
-  <div id="loginOverlay" class="login-visible">
-    <div class="login-container">
-      <div class="login-card">
-        <div class="login-header">
-          <div class="brand-icon">📦</div>
-          <h1 class="login-title">Welcome Back</h1>
-          <p class="login-subtitle">Sign in to Delivery Hub Dashboard</p>
-        </div>
-
-        <form class="login-form" id="loginForm" onsubmit="handleLogin(event)">
-          <div class="input-group">
-            <label class="input-label" for="username">Username</label>
-            <div class="input-wrapper">
-              <i data-lucide="user" class="input-icon"></i>
-              <input
-                type="text"
-                id="username"
-                class="input-field"
-                placeholder="Enter your username"
-                autocomplete="username"
-              >
-            </div>
-          </div>
-
-          <div class="input-group">
-            <label class="input-label" for="password">Password</label>
-            <div class="input-wrapper">
-              <i data-lucide="lock" class="input-icon"></i>
-              <input
-                type="password"
-                id="password"
-                class="input-field"
-                placeholder="••••••••"
-                autocomplete="current-password"
-              >
-              <button type="button" class="toggle-password" onclick="togglePasswordVisibility()" aria-label="Toggle Password Visibility">
-                <i data-lucide="eye" id="eyeIcon" style="width: 18px; height: 18px;"></i>
-              </button>
-            </div>
-          </div>
-
-          <button type="submit" class="login-btn">
-            <span>Sign In</span>
-            <i data-lucide="arrow-right" style="width:18px; height:18px;"></i>
-          </button>
-        </form>
-      </div>
-
-      <div class="login-footer">
-        Kitchen Delivery Hub &copy; 2026
-      </div>
-    </div>
-  </div>
-
   <!-- Login Toast -->
   <div id="loginToast">Login successful!</div>
-
-  <script>
-    function togglePasswordVisibility() {
-      const passwordInput = document.getElementById('password');
-      const eyeIcon = document.getElementById('eyeIcon');
-      if (passwordInput.type === 'password') {
-        passwordInput.type = 'text';
-        eyeIcon.setAttribute('data-lucide', 'eye-off');
-      } else {
-        passwordInput.type = 'password';
-        eyeIcon.setAttribute('data-lucide', 'eye');
-      }
-      lucide.createIcons();
-    }
-
-    // Dummy auth: any input (even empty) logs you in.
-    function handleLogin(event) {
-      event.preventDefault();
-      showLoginToast('Authenticating...');
-      setTimeout(() => {
-        showLoginToast('Success! Redirecting...');
-        setTimeout(() => {
-          const overlay = document.getElementById('loginOverlay');
-          overlay.classList.remove('login-visible');
-          overlay.classList.add('hidden');
-          setTimeout(() => { overlay.style.display = 'none'; }, 500);
-        }, 600);
-      }, 700);
-    }
-
-    function showLoginToast(msg) {
-      const toast = document.getElementById('loginToast');
-      toast.textContent = msg;
-      toast.style.opacity = '1';
-      toast.style.transform = 'translateX(-50%) translateY(0)';
-      setTimeout(() => {
-        toast.style.opacity = '0';
-        toast.style.transform = 'translateX(-50%) translateY(-60px)';
-      }, 1800);
-    }
-  </script>
 
 <div class="main-scroll" id="mainScroll">
 
@@ -2229,45 +2133,6 @@ function aP(id, ev, dur) {
       document.body.style.paddingTop = '20px';
     }
   </script>
-
-  <script>
-  // FORCE LOGIN SCREEN TO SHOW ON GITHUB PAGES
-  (function() {
-    console.log('Force login script running...');
-    
-    function forceShowLogin() {
-      const overlay = document.getElementById('loginOverlay');
-      if (!overlay) {
-        console.log('Login overlay not found!');
-        return;
-      }
-      
-      // Remove any hidden class
-      overlay.classList.remove('hidden');
-      // Ensure it's visible
-      overlay.style.display = 'flex';
-      overlay.style.opacity = '1';
-      overlay.style.transform = 'scale(1)';
-      overlay.style.pointerEvents = 'auto';
-      
-      console.log('Login overlay forced visible. Classes:', overlay.className);
-    }
-    
-    // Run immediately
-    forceShowLogin();
-    
-    // Run again when DOM is ready
-    if (document.readyState === 'loading') {
-      document.addEventListener('DOMContentLoaded', forceShowLogin);
-    }
-    
-    // Run again when everything loads
-    window.addEventListener('load', forceShowLogin);
-    
-    // And again after delays (for good measure)
-    setTimeout(forceShowLogin, 100);
-    setTimeout(forceShowLogin, 500);
-  })();
-  </script>
+  
 </body>
 </html>
