@@ -412,21 +412,33 @@ function cUS() {
 // backend which people were "not available" so it can log absence.
 // "Accident" people are treated as delivered and are never sent as absent.
 function finalizeDelivery_(locKey, deliveredNames, notAvailableNames) {
-  deliverySubmitted[currentDeliveryMeal] = deliverySubmitted[currentDeliveryMeal] || {};
-  deliverySubmitted[currentDeliveryMeal][locKey] = true;
+  const meal = currentDeliveryMeal;
+  deliverySubmitted[meal] = deliverySubmitted[meal] || {};
+  deliverySubmitted[meal][locKey] = true;
   if (notAvailableNames.length) {
-    deliveryUnavailable[currentDeliveryMeal] = deliveryUnavailable[currentDeliveryMeal] || {};
-    deliveryUnavailable[currentDeliveryMeal][locKey] = notAvailableNames;
+    deliveryUnavailable[meal] = deliveryUnavailable[meal] || {};
+    deliveryUnavailable[meal][locKey] = notAvailableNames;
   }
   cM();
-  const locName = DATA.delivery[currentDeliveryMeal][locKey].name;
+  const locName = DATA.delivery[meal][locKey].name;
   showToast('Delivery completed for ' + locName + '!');
   renderDeliveryScreen();
   uH();
 
   apiPost_('submitDelivery', {
-    data: JSON.stringify({ meal: currentDeliveryMeal, location: locKey, absentNames: notAvailableNames })
-  }).catch(err => apiError_('submitDelivery', err));
+    data: JSON.stringify({ meal: meal, location: locKey, absentNames: notAvailableNames })
+  }).then(res => {
+    if (!res || res.ok === false) throw new Error(res && res.error);
+  }).catch(err => {
+    // Server save failed — undo the optimistic local state so this device
+    // doesn't show it as done when it isn't actually saved.
+    delete deliverySubmitted[meal][locKey];
+    if (deliveryUnavailable[meal]) delete deliveryUnavailable[meal][locKey];
+    renderDeliveryScreen();
+    uH();
+    showToast(locName + ' failed to save — card restored, please retry');
+    apiError_('submitDelivery', err);
+  });
 }
 
 // ============================================================
