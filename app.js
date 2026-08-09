@@ -62,9 +62,31 @@ function loadAllData() {
   return apiGet_('bootstrap').then(res => {
     if (!res || res.ok === false) throw new Error(res && res.error);
     DATA = res;
+    syncDeliveryStateFromServer_();
     renderEverything();
     return res;
   }).catch(err => { apiError_('bootstrap', err); throw err; });
+}
+
+// Pulls today's already-submitted meal+location combos from the server
+// (delivery_log sheet) into the local UI state, so a delivery marked done
+// on one device shows as done on every other device after its next
+// bootstrap — without discarding anything already marked done locally
+// this session (e.g. right after a submit, before the next reload).
+function syncDeliveryStateFromServer_() {
+  const submissions = DATA.deliverySubmissions || {};
+  ['breakfast', 'lunch', 'dinner'].forEach(meal => {
+    const locs = submissions[meal] || {};
+    Object.keys(locs).forEach(locKey => {
+      deliverySubmitted[meal] = deliverySubmitted[meal] || {};
+      deliverySubmitted[meal][locKey] = true;
+      const absent = locs[locKey];
+      if (absent && absent.length) {
+        deliveryUnavailable[meal] = deliveryUnavailable[meal] || {};
+        deliveryUnavailable[meal][locKey] = absent;
+      }
+    });
+  });
 }
 
 function renderEverything() {
@@ -1043,8 +1065,10 @@ CI.addEventListener('input', () => { SB.disabled = !CI.value.trim(); });
 window.addEventListener('load', () => { uPP(); });
 window.addEventListener('resize', uPP);
 
-// Keep the menu/schedule ticks in sync with the clock without a reload
+// Keep the menu/schedule ticks in sync with the clock, and pick up
+// deliveries submitted from other devices, without a manual reload.
 setInterval(() => { if (DATA) { renderMenu(); renderSchedule(); } }, 60 * 1000);
+setInterval(() => { if (currentUser) loadAllData(); }, 2 * 60 * 1000);
 
 // Add to home screen prompt for iOS
 if (window.navigator.standalone === false) {
