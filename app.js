@@ -1066,9 +1066,14 @@ window.addEventListener('load', () => { uPP(); });
 window.addEventListener('resize', uPP);
 
 // Keep the menu/schedule ticks in sync with the clock, and pick up
-// deliveries submitted from other devices, without a manual reload.
+// deliveries / stock / inventory changes submitted from other devices,
+// without a manual reload. Skips the refresh while a modal is open so it
+// doesn't yank the screen out from under an in-progress action.
+function anyModalOpen_() {
+  return !!document.querySelector('.modal-overlay.active, [id$="ModalOverlay"].active');
+}
 setInterval(() => { if (DATA) { renderMenu(); renderSchedule(); } }, 60 * 1000);
-setInterval(() => { if (currentUser) loadAllData(); }, 2 * 60 * 1000);
+setInterval(() => { if (currentUser && !anyModalOpen_()) loadAllData(); }, 7 * 1000);
 
 // Add to home screen prompt for iOS
 if (window.navigator.standalone === false) {
