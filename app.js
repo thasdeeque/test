@@ -3,7 +3,7 @@
 // web app as a JSON API. Fill in WEB_APP_URL below after deploying.
 // ============================================================
 
-const WEB_APP_URL = ''; // <-- paste your deployed Apps Script /exec URL here
+const WEB_APP_URL = 'https://script.google.com/macros/s/AKfycby-EU4xY05QO26YG1fQuupXdd5qSgfNs9lQFW0fwRKUi8WmYvO9pIXmfCt6RhseVgOiMw/exec'; // <-- paste your deployed Apps Script /exec URL here
 
 // ---- low-level API helpers ----
 function apiGet_(action, params) {
