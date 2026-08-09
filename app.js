@@ -64,6 +64,7 @@ function loadAllData() {
     if (!res || res.ok === false) throw new Error(res && res.error);
     DATA = res;
     lastDataSnapshot = JSON.stringify(res);
+    lastDeliveryLogSnapshot = JSON.stringify(res.deliverySubmissions || {});
     syncDeliveryStateFromServer_();
     renderEverything();
     return res;
@@ -106,6 +107,45 @@ function syncDeliveryStateFromServer_() {
       }
     });
   });
+}
+
+// ============================================================
+// LIVE DELIVERY LOG POLL — checks ONLY the delivery_log sheet every 5s.
+// If nothing changed since last check, does nothing at all (no re-render).
+// If a new meal+location entry shows up (e.g. "breakfast - Guest House"),
+// that card is hidden immediately without waiting for a full bootstrap.
+// ============================================================
+let lastDeliveryLogSnapshot = null;
+
+function pollDeliveryLog_() {
+  if (!currentUser) return;
+  apiGet_('getDeliveryLog').then(res => {
+    if (!res || res.ok === false) return; // fail silently, try again in 5s
+    const log = res.log || { breakfast: {}, lunch: {}, dinner: {} };
+    const snapshot = JSON.stringify(log);
+    if (snapshot === lastDeliveryLogSnapshot) return; // no change, do nothing
+    lastDeliveryLogSnapshot = snapshot;
+
+    let changed = false;
+    ['breakfast', 'lunch', 'dinner'].forEach(meal => {
+      const locs = log[meal] || {};
+      Object.keys(locs).forEach(locKey => {
+        deliverySubmitted[meal] = deliverySubmitted[meal] || {};
+        if (!deliverySubmitted[meal][locKey]) changed = true;
+        deliverySubmitted[meal][locKey] = true;
+        const absent = locs[locKey];
+        if (absent && absent.length) {
+          deliveryUnavailable[meal] = deliveryUnavailable[meal] || {};
+          deliveryUnavailable[meal][locKey] = absent;
+        }
+      });
+    });
+
+    if (changed) {
+      renderDeliveryScreen();
+      uH();
+    }
+  }).catch(() => {}); // stay quiet on background poll errors
 }
 
 function renderEverything() {
@@ -1109,6 +1149,7 @@ function anyModalOpen_() {
 }
 setInterval(() => { if (DATA) { renderMenu(); renderSchedule(); } }, 60 * 1000);
 setInterval(() => { if (currentUser && !anyModalOpen_()) pollForChanges_(); }, 7 * 1000);
+setInterval(() => { if (currentUser && !anyModalOpen_()) pollDeliveryLog_(); }, 5 * 1000);
 
 // Add to home screen prompt for iOS
 if (window.navigator.standalone === false) {
