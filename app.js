@@ -34,6 +34,7 @@ if (typeof lucide !== 'undefined') lucide.createIcons();
 
 // ===== APP STATE (populated from the API, no hardcoded data) =====
 let DATA = null;              // full bootstrap payload from getAllData()
+let lastDataSnapshot = null;  // JSON string of the last DATA we rendered, for change detection
 let currentUser = null;       // logged-in username
 let currentDeliveryMeal = 'breakfast';
 let deliverySubmitted = {};   // { meal: { location: true } } — completed this session
@@ -62,10 +63,28 @@ function loadAllData() {
   return apiGet_('bootstrap').then(res => {
     if (!res || res.ok === false) throw new Error(res && res.error);
     DATA = res;
+    lastDataSnapshot = JSON.stringify(res);
     syncDeliveryStateFromServer_();
     renderEverything();
     return res;
   }).catch(err => { apiError_('bootstrap', err); throw err; });
+}
+
+// Used by the background poller: fetches the latest bootstrap data, but
+// only touches DATA / re-renders / re-syncs delivery state if the response
+// actually differs from what's already on screen. This is what stops the
+// periodic check from redoing work (and replaying animations) when nothing
+// on the sheet has changed since the last check.
+function pollForChanges_() {
+  return apiGet_('bootstrap').then(res => {
+    if (!res || res.ok === false) return; // fail silently on background poll
+    const snapshot = JSON.stringify(res);
+    if (snapshot === lastDataSnapshot) return; // nothing changed, skip re-render
+    DATA = res;
+    lastDataSnapshot = snapshot;
+    syncDeliveryStateFromServer_();
+    renderEverything();
+  }).catch(() => {}); // background poll errors are non-fatal, stay quiet
 }
 
 // Pulls today's already-submitted meal+location combos from the server
@@ -205,10 +224,14 @@ function renderDeliveryScreen() {
     const submitted = !!(deliverySubmitted[currentDeliveryMeal] && deliverySubmitted[currentDeliveryMeal][locKey]);
     const unavailable = (deliveryUnavailable[currentDeliveryMeal] && deliveryUnavailable[currentDeliveryMeal][locKey]) || [];
     if (!submitted) allDone = false;
+    // Already-submitted locations are simply not rendered at all — this
+    // avoids replaying the "removing" fade-out animation from scratch on
+    // every periodic refresh, which looked like the card flashing back in.
+    if (submitted) return;
 
     const card = document.createElement('div');
-    card.className = 'delivery-card' + (submitted ? ' removing' : '') + (unavailable.length ? ' unavailable-state' : '');
-    if (!submitted) card.onclick = () => openDeliveryModal(locKey);
+    card.className = 'delivery-card' + (unavailable.length ? ' unavailable-state' : '');
+    card.onclick = () => openDeliveryModal(locKey);
     card.innerHTML = `
       <div class="delivery-card-content">
         <div class="delivery-card-number">${String(i + 1).padStart(2, '0')}</div>
@@ -1073,7 +1096,7 @@ function anyModalOpen_() {
   return !!document.querySelector('.modal-overlay.active, [id$="ModalOverlay"].active');
 }
 setInterval(() => { if (DATA) { renderMenu(); renderSchedule(); } }, 60 * 1000);
-setInterval(() => { if (currentUser && !anyModalOpen_()) loadAllData(); }, 7 * 1000);
+setInterval(() => { if (currentUser && !anyModalOpen_()) pollForChanges_(); }, 7 * 1000);
 
 // Add to home screen prompt for iOS
 if (window.navigator.standalone === false) {
