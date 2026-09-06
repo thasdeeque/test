@@ -634,14 +634,26 @@ body {
 .stock-item-left { display: flex; align-items: center; gap: 14px; }
 .stock-item-icon { width: 40px; height: 40px; border-radius: 12px; background: #e8e8ed; display: flex; align-items: center; justify-content: center; color: var(--text-primary); }
 .stock-item-name { font-size: 15px; font-weight: 700; color: var(--text-primary); }
+.stock-item-sublabel { font-size: 12px; font-weight: 700; margin-top: 3px; color: var(--accent-warm); }
+.stock-item-sublabel.extra { color: var(--success); }
+.stock-item-sublabel.finished { color: var(--danger); }
+.stock-item-right { text-align: right; }
 .stock-item-kg { font-size: 18px; font-weight: 700; color: var(--accent-warm); }
 .stock-item-kg span { font-size: 12px; font-weight: 600; color: var(--text-tertiary); margin-left: 2px; }
+
+/* Finished (out of stock) items float to the top with a red accent instead of gold */
+.stock-item.finished { border-top-color: var(--danger); background: #fff8f8; }
+.stock-item.finished .stock-item-kg { color: var(--danger); }
 
 .stock-detail-content { padding: 24px 20px; text-align: center; }
 .stock-detail-icon { width: 60px; height: 60px; border-radius: 18px; background: #e8e8ed; display: flex; align-items: center; justify-content: center; color: var(--text-primary); margin: 0 auto 16px; }
 .stock-detail-name { font-size: 22px; font-weight: 800; color: var(--text-primary); margin-bottom: 4px; letter-spacing: -0.3px; }
-.stock-detail-current { font-size: 13px; font-weight: 600; color: var(--text-tertiary); margin-bottom: 28px; }
+.stock-detail-current { font-size: 13px; font-weight: 600; color: var(--text-tertiary); margin-bottom: 12px; }
 .stock-detail-current span { color: var(--accent-warm); font-weight: 700; }
+
+.stock-detail-delta { font-size: 13px; font-weight: 800; margin-bottom: 16px; min-height: 18px; color: var(--text-tertiary); }
+.stock-detail-delta.positive { color: var(--success); }
+.stock-detail-delta.negative { color: var(--danger); }
 
 .stock-adjust-row { display: flex; align-items: center; justify-content: center; gap: 20px; margin-bottom: 8px; }
 .stock-adjust-btn {
@@ -1707,13 +1719,14 @@ body {
       <div class="stock-detail-content">
         <div class="stock-detail-icon" id="stockDetailIcon"><i data-lucide="apple" style="width:28px;height:28px"></i></div>
         <div class="stock-detail-name" id="stockDetailName">Tomato</div>
-        <div class="stock-detail-current">In stock: <span id="stockDetailCurrent">10.0 kg</span> &nbsp;•&nbsp; Needed: <span id="stockDetailNeeded">0.0 kg</span></div>
+        <div class="stock-detail-current">Needed: <span id="stockDetailNeeded">0.0 kg</span></div>
+        <div class="stock-detail-delta" id="stockDetailDelta"></div>
         <div class="stock-adjust-row">
-          <button class="stock-adjust-btn" onclick="adjustStockAdd(-0.5)"><i data-lucide="minus" style="width:18px;height:18px"></i></button>
-          <input type="text" class="stock-adjust-value" id="stockAddValue" value="0.0" onchange="validateStockAddInput()" onblur="validateStockAddInput()">
+          <button class="stock-adjust-btn" id="stockMinusBtn" onclick="adjustStockAdd(-0.5)"><i data-lucide="minus" style="width:18px;height:18px"></i></button>
+          <input type="text" inputmode="decimal" class="stock-adjust-value" id="stockAddValue" value="0.0" onchange="validateStockAddInput()" onblur="validateStockAddInput()">
           <button class="stock-adjust-btn" onclick="adjustStockAdd(0.5)"><i data-lucide="plus" style="width:18px;height:18px"></i></button>
         </div>
-        <div class="stock-adjust-label" id="stockAddLabel">Add to stock (kg)</div>
+        <div class="stock-adjust-label" id="stockAddLabel">Current stock (kg)</div>
         <button class="stock-save-btn" onclick="saveStock()">Save</button>
       </div>
     </div>
