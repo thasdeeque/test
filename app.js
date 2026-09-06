@@ -50,7 +50,8 @@ let currentStockRow = null;
 let currentKitchenInventoryRow = null;   // for generic (non-tiffin/casrol) items
 let currentTiffinCasrolKey = null;       // 'tiffin' | 'casrol'
 let currentTiffinCasrolLocation = null;
-let tempStockAdd = 0;
+let stockModalStart_ = 0;   // quantity the stock modal opened with
+let stockModalValue_ = 0;   // live editable quantity in the stock modal
 let tempKitchenValue = 0;
 let selectedShoppingItem = null;
 let pendingShoppingItem = null, pendingShoppingName = null, pendingShoppingQty = null;
@@ -674,21 +675,63 @@ function finalizeShoppingOrder() {
 // STOCK — quantity (in stock) + needed, both editable; "add" tops up
 // quantity and reduces needed by the same amount (floored at 0)
 // ============================================================
+// A stock item is "finished" once its quantity hits exactly 0.
+function isStockFinished_(item) {
+  return item.quantity <= 0;
+}
+
+// Surplus = how much quantity currently exceeds needed. Positive means
+// extra beyond what's needed; the sheet may store `needed` as negative
+// once surplus starts (see saveStock), so this normalizes that.
+function stockSurplus_(item) {
+  return item.needed < 0 ? -item.needed : 0;
+}
+
+// Sort finished (out of stock) items to the top, everything else keeps
+// its original sheet order below that.
+function sortedStockList_() {
+  const list = (DATA && DATA.stock) ? DATA.stock.slice() : [];
+  list.sort((a, b) => {
+    const aFin = isStockFinished_(a) ? 1 : 0;
+    const bFin = isStockFinished_(b) ? 1 : 0;
+    if (aFin !== bFin) return bFin - aFin; // finished items first
+    return 0; // stable: keep sheet order otherwise
+  });
+  return list;
+}
+
 function renderStockList() {
   if (!DATA || !DATA.stock) return;
   const list = document.getElementById('stockList');
   if (!list) return;
   list.innerHTML = '';
-  DATA.stock.forEach(item => {
+  sortedStockList_().forEach(item => {
+    const finished = isStockFinished_(item);
+    const surplus = stockSurplus_(item);
+
+    let sublabelHtml = '';
+    if (finished) {
+      sublabelHtml = `<div class="stock-item-sublabel finished">Stock finished</div>`;
+    } else if (surplus > 0) {
+      sublabelHtml = `<div class="stock-item-sublabel extra">extra ${surplus.toFixed(1)}${escapeHtml_(item.unit)}</div>`;
+    } else if (item.needed > 0) {
+      sublabelHtml = `<div class="stock-item-sublabel">${item.needed.toFixed(1)}${escapeHtml_(item.unit)} needed</div>`;
+    } // needed === 0 exactly -> no sublabel at all
+
     const row = document.createElement('div');
-    row.className = 'stock-item';
+    row.className = 'stock-item' + (finished ? ' finished' : '');
     row.onclick = () => openStockModal(item.row);
     row.innerHTML = `
       <div class="stock-item-left">
         <div class="stock-item-icon"><i data-lucide="list-checks" style="width:20px;height:20px"></i></div>
-        <div class="stock-item-name">${escapeHtml_(item.name)}</div>
+        <div>
+          <div class="stock-item-name">${escapeHtml_(item.name)}</div>
+          ${sublabelHtml}
+        </div>
       </div>
-      <div class="stock-item-kg">${item.quantity.toFixed(1)}<span>${escapeHtml_(item.unit)}</span></div>
+      <div class="stock-item-right">
+        <div class="stock-item-kg">${item.quantity.toFixed(1)}<span>${escapeHtml_(item.unit)}</span></div>
+      </div>
     `;
     list.appendChild(row);
   });
@@ -702,12 +745,13 @@ function findStockByRow_(row) {
 function openStockModal(row) {
   currentStockRow = row;
   const item = findStockByRow_(row);
-  tempStockAdd = 0;
+  stockModalStart_ = item.quantity;
+  stockModalValue_ = item.quantity;
   document.getElementById('stockDetailName').textContent = item.name;
-  document.getElementById('stockDetailCurrent').textContent = item.quantity.toFixed(1) + ' ' + item.unit;
   document.getElementById('stockDetailNeeded').textContent = item.needed.toFixed(1) + ' ' + item.unit;
-  document.getElementById('stockAddValue').value = '0.0';
-  document.getElementById('stockAddLabel').textContent = 'Add to stock (' + item.unit + ')';
+  document.getElementById('stockAddValue').value = stockModalValue_.toFixed(1);
+  document.getElementById('stockAddLabel').textContent = 'Current stock (' + item.unit + ')';
+  updateStockDelta_();
   const overlay = document.getElementById('stockModalOverlay');
   overlay.classList.add('active');
   document.body.style.overflow = 'hidden';
@@ -721,27 +765,63 @@ function closeStockModal(e) {
   currentStockRow = null;
 }
 
+// Updates the small delta readout above the +/- row, e.g. "+2.0kg" in
+// green or "-2.0kg" in red, based on how far stockModalValue_ has moved
+// from the quantity the modal opened with.
+function updateStockDelta_() {
+  const el = document.getElementById('stockDetailDelta');
+  if (!el) return;
+  const item = findStockByRow_(currentStockRow);
+  const unit = item ? item.unit : '';
+  const delta = stockModalValue_ - stockModalStart_;
+  el.classList.remove('positive', 'negative');
+  if (Math.abs(delta) < 0.0001) {
+    el.textContent = '';
+  } else if (delta > 0) {
+    el.textContent = '+' + delta.toFixed(1) + unit;
+    el.classList.add('positive');
+  } else {
+    el.textContent = delta.toFixed(1) + unit; // toFixed already includes the minus sign
+    el.classList.add('negative');
+  }
+}
+
 function adjustStockAdd(delta) {
-  tempStockAdd = Math.max(0, tempStockAdd + delta);
-  document.getElementById('stockAddValue').value = tempStockAdd.toFixed(1);
+  stockModalValue_ = Math.max(0, stockModalValue_ + delta);
+  document.getElementById('stockAddValue').value = stockModalValue_.toFixed(1);
+  updateStockDelta_();
 }
 
 function validateStockAddInput() {
   const input = document.getElementById('stockAddValue');
-  let val = parseFloat(input.value);
+  // Strip anything that isn't a digit, minus sign, or decimal point before
+  // parsing, so letters/symbols typed in can't sneak through.
+  const cleaned = input.value.replace(/[^0-9.]/g, '');
+  let val = parseFloat(cleaned);
   if (isNaN(val) || val < 0) val = 0;
-  tempStockAdd = val;
-  input.value = tempStockAdd.toFixed(1);
+  stockModalValue_ = val;
+  input.value = stockModalValue_.toFixed(1);
+  updateStockDelta_();
 }
 
 function saveStock() {
   if (!currentStockRow) return;
   const item = findStockByRow_(currentStockRow);
-  const newQuantity = item.quantity + tempStockAdd;
-  const newNeeded = Math.max(0, item.needed - tempStockAdd);
+  const delta = stockModalValue_ - stockModalStart_; // positive = added, negative = subtracted
+  const newQuantity = Math.max(0, stockModalValue_);
+  // needed shrinks as stock is added, grows as stock is subtracted; it is
+  // allowed to go negative, which represents surplus beyond what's needed.
+  const newNeeded = item.needed - delta;
   item.quantity = newQuantity;
   item.needed = newNeeded;
-  showToast(item.name + ' updated: ' + newQuantity.toFixed(1) + ' in stock, ' + newNeeded.toFixed(1) + ' needed');
+
+  if (newQuantity <= 0) {
+    showToast(item.name + ' is now out of stock');
+  } else if (newNeeded < 0) {
+    showToast(item.name + ' updated: ' + newQuantity.toFixed(1) + ' in stock, extra ' + (-newNeeded).toFixed(1));
+  } else {
+    showToast(item.name + ' updated: ' + newQuantity.toFixed(1) + ' in stock, ' + newNeeded.toFixed(1) + ' needed');
+  }
   renderStockList();
   closeStockModal();
 
