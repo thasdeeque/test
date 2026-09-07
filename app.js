@@ -7,8 +7,12 @@ const WEB_APP_URL = 'https://script.google.com/macros/s/AKfycby-EU4xY05QO26YG1fQ
 
 // ---- low-level API helpers ----
 function apiGet_(action, params) {
-  const usp = new URLSearchParams(Object.assign({ action: action }, params || {}));
-  return fetch(WEB_APP_URL + '?' + usp.toString())
+  // _ts is a cache-busting param: GET requests to the same /exec URL can get
+  // served from browser/ISP/CDN cache instead of hitting the server, which
+  // made completed deliveries look like they never disappeared. Combined
+  // with cache: 'no-store', this forces every call to go to the server.
+  const usp = new URLSearchParams(Object.assign({ action: action, _ts: Date.now() }, params || {}));
+  return fetch(WEB_APP_URL + '?' + usp.toString(), { cache: 'no-store' })
     .then(r => r.json());
 }
 
