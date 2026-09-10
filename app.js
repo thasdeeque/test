@@ -3,7 +3,7 @@
 // web app as a JSON API. Fill in WEB_APP_URL below after deploying.
 // ============================================================
 
-const WEB_APP_URL = 'https://script.google.com/macros/s/AKfycbxLMFIp_J1dsLcf-3-Lvn6UJTp9g9PNIAMmMDsUAkaHeLNU6P4OVvT9JFHuGArajeftOQ/exec'; // <-- paste your deployed Apps Script /exec URL here
+const WEB_APP_URL = 'https://script.google.com/macros/s/AKfycby-EU4xY05QO26YG1fQuupXdd5qSgfNs9lQFW0fwRKUi8WmYvO9pIXmfCt6RhseVgOiMw/exec'; // <-- paste your deployed Apps Script /exec URL here
 
 // ---- low-level API helpers ----
 function apiGet_(action, params) {
@@ -43,6 +43,53 @@ let currentUser = null;       // logged-in username
 let currentDeliveryMeal = 'breakfast';
 let deliverySubmitted = {};   // { meal: { location: true } } — completed this session
 let deliveryUnavailable = {}; // { meal: { location: [names] } } — "not available" this session
+
+// ============================================================
+// SESSION STORAGE — "remember me" for 48 hours, plus last
+// active tab / shop sub-screen so a refresh lands back where
+// the user was instead of bouncing to Home.
+// ============================================================
+const SESSION_KEY = 'dh_session';       // { username, expiresAt }
+const NAV_STATE_KEY = 'dh_nav_state';   // { tab, shopSub }
+const SESSION_TTL_MS = 48 * 60 * 60 * 1000; // 48 hours
+
+function saveSession_(username) {
+  try {
+    localStorage.setItem(SESSION_KEY, JSON.stringify({
+      username: username,
+      expiresAt: Date.now() + SESSION_TTL_MS
+    }));
+  } catch (e) { /* storage unavailable — app still works, just won't persist */ }
+}
+
+function readSession_() {
+  try {
+    const raw = localStorage.getItem(SESSION_KEY);
+    if (!raw) return null;
+    const s = JSON.parse(raw);
+    if (!s || !s.username || !s.expiresAt) return null;
+    if (Date.now() > s.expiresAt) { clearSession_(); return null; }
+    return s;
+  } catch (e) { return null; }
+}
+
+function clearSession_() {
+  try { localStorage.removeItem(SESSION_KEY); } catch (e) {}
+}
+
+function saveNavState_(partial) {
+  try {
+    const cur = readNavState_() || {};
+    localStorage.setItem(NAV_STATE_KEY, JSON.stringify(Object.assign(cur, partial)));
+  } catch (e) {}
+}
+
+function readNavState_() {
+  try {
+    const raw = localStorage.getItem(NAV_STATE_KEY);
+    return raw ? JSON.parse(raw) : null;
+  } catch (e) { return null; }
+}
 
 const NI = document.querySelectorAll('.nav-item'), P = document.getElementById('pill'), NB = document.getElementById('navBar'),
       SC = document.querySelectorAll('.screen'), T = document.getElementById('toast'),
@@ -534,7 +581,7 @@ function uH() {
 // ============================================================
 // SHOP — navigation between sub-panels
 // ============================================================
-function openShopSub(subId) {
+function openShopSub(subId, opts) {
   const sub = document.getElementById('shop-' + subId);
   const scrollEl = document.getElementById('mainScroll');
   if (scrollEl) scrollEl.scrollTop = 0;
@@ -544,6 +591,7 @@ function openShopSub(subId) {
     if (subId === 'stock') renderStockList();
     if (subId === 'kitchen-items') renderKitchenList();
   }
+  if (!(opts && opts.skipSave)) saveNavState_({ tab: 'shop', shopSub: subId });
   if (typeof lucide !== 'undefined') lucide.createIcons();
 }
 
@@ -553,6 +601,7 @@ function backToShop() {
   if (scrollEl) scrollEl.scrollTop = 0;
   document.querySelectorAll('.shop-panels > .shop-sub-screen, .shop-panels > #shop-main').forEach(s => s.classList.remove('active'));
   main.classList.add('active');
+  saveNavState_({ tab: 'shop', shopSub: null });
   const shopGrid = main.querySelector('.shop-grid');
   if (shopGrid) { shopGrid.style.display = 'grid'; shopGrid.style.opacity = '1'; shopGrid.style.visibility = 'visible'; }
   main.querySelectorAll('.shop-card').forEach(card => { card.style.display = 'block'; card.style.opacity = '1'; card.style.visibility = 'visible'; });
@@ -1067,52 +1116,187 @@ function togglePassword() {
   else { input.type = 'password'; eyeOn.style.display = 'block'; eyeOff.style.display = 'none'; }
 }
 
+// (Word-cycling stage loader removed — beginDataLoad_() now just shows a
+// plain spinner on #loadingScreen while loadAllData() is in flight.)
+
+// ============================================================
+// AUTH ANIMATION SEQUENCE
+//
+// 1. handleLoginDirect() fires the instant the button is pressed:
+//    the white layer slides up covering the screen with a plain
+//    spinner — no waiting on the network for this part.
+// 2. The login API call runs in the background while that spinner
+//    spins.
+// 3. When the response comes back, the colored result layer slides
+//    down from the top over the white layer, and its tick/cross
+//    icon pops in.
+// 4a. Success: right after the tick pops in, the green layer slides
+//     away to the left immediately, revealing the circular loading
+//     screen underneath (data-fetch was already kicked off in the
+//     background). The loading screen spins until the data actually
+//     finishes loading, then it slides away to reveal the dashboard.
+// 4b. Fail: after a short beat, both layers are dismissed (no slide
+//     needed — they just reset) revealing the login form again so
+//     the user can retry.
+// ============================================================
+function showAuthWhite_() {
+  const white = document.getElementById('authWhiteLayer');
+  white.classList.add('up');
+}
+
+function hideAuthWhite_() {
+  const white = document.getElementById('authWhiteLayer');
+  white.classList.remove('up');
+}
+
+function showAuthResult_(success) {
+  const layer = document.getElementById('authResultLayer');
+  const icon = document.getElementById('authResultIcon');
+  const tick = document.getElementById('authTickIcon');
+  const cross = document.getElementById('authCrossIcon');
+  const spinner = document.getElementById('authResultSpinner');
+
+  layer.classList.remove('success', 'fail', 'away-left');
+  icon.classList.remove('show');
+  spinner.classList.remove('show');
+  tick.style.display = success ? 'block' : 'none';
+  cross.style.display = success ? 'none' : 'block';
+  layer.classList.add(success ? 'success' : 'fail');
+
+  // slide the colored layer down over the white one
+  requestAnimationFrame(() => {
+    layer.classList.add('down');
+    // pop the icon in shortly after the slide starts
+    setTimeout(() => icon.classList.add('show'), 300);
+  });
+}
+
+function resetAuthLayers_() {
+  const white = document.getElementById('authWhiteLayer');
+  const layer = document.getElementById('authResultLayer');
+  const icon = document.getElementById('authResultIcon');
+  const spinner = document.getElementById('authResultSpinner');
+  layer.style.transition = 'none';
+  layer.classList.remove('down', 'success', 'fail', 'away-left');
+  icon.classList.remove('show');
+  spinner.classList.remove('show');
+  void layer.offsetHeight;
+  layer.style.transition = '';
+  white.classList.remove('up');
+}
+
+function hideLoginOverlay_() {
+  const overlay = document.getElementById('loginOverlay');
+  overlay.classList.add('hidden');
+  // #loginOverlay carries inline styles (display/opacity/pointer-events)
+  // straight on the element, which beat the .hidden CSS class on
+  // specificity — so the class alone never actually hid it. Force the
+  // inline styles directly too.
+  overlay.style.display = 'none';
+  overlay.style.opacity = '0';
+  overlay.style.pointerEvents = 'none';
+}
+
 function handleLoginDirect(event) {
   event.preventDefault();
+
   const username = document.getElementById('usernameDirect').value.trim();
   const password = document.getElementById('passwordDirect').value;
-  if (!username || !password) { showToast('Enter a username and password'); return; }
+  if (!username || !password) {
+    showToast('Enter a username and password');
+    return;
+  }
 
-  const overlay = document.getElementById('loginOverlay');
-  const loader = document.getElementById('loadingScreen');
-  const bar = document.getElementById('loadingBar');
-  const loadText = document.getElementById('loadingText');
-
-  loader.style.display = 'flex';
-  setTimeout(() => { loader.style.opacity = '1'; }, 10);
-  loadText.textContent = 'Authenticating...';
-  bar.style.width = '20%';
+  // Step 1 — white layer + spinner, immediately, before any network call.
+  showAuthWhite_();
 
   apiPost_('login', { username: username, password: password }).then(res => {
-    if (!res || res.ok === false) {
-      loader.style.opacity = '0';
-      setTimeout(() => { loader.style.display = 'none'; }, 300);
-      showToast((res && res.error) || 'Login failed');
-      return;
-    }
-    currentUser = username;
-    bar.style.width = '55%'; loadText.textContent = 'Loading data...';
+    const ok = !!(res && res.ok !== false);
+    // Step 2 — colored result layer slides down with tick/cross.
+    showAuthResult_(ok);
 
-    overlay.style.transition = 'opacity 0.25s ease';
-    overlay.style.opacity = '0';
-    overlay.style.pointerEvents = 'none';
-    setTimeout(() => overlay.classList.add('hidden'), 250);
+    if (ok) {
+      currentUser = username;
+      saveSession_(username);
 
-    loadAllData().then(() => {
-      bar.style.width = '100%'; loadText.textContent = 'Welcome!';
+      // Start fetching the real dashboard data NOW, in the background,
+      // while the success animation is still playing — instead of
+      // waiting for the animation to finish first. loadAllData() also
+      // primes lastDataSnapshot / renders once it resolves.
+      const dataPromise = loadAllData().catch(() => null);
+
+      // Step 3a — success: right after the tick pops in, slide the
+      // green layer away to the left immediately, revealing the
+      // circular loading screen underneath (not the dashboard yet).
       setTimeout(() => {
-        loader.style.transition = 'opacity 0.4s ease';
-        loader.style.opacity = '0';
-        setTimeout(() => { loader.style.display = 'none'; }, 400);
-      }, 500);
-    }).catch(() => {
-      loader.style.opacity = '0';
-      setTimeout(() => { loader.style.display = 'none'; }, 300);
-    });
+        hideLoginOverlay_();
+        document.getElementById('authResultLayer').classList.add('away-left');
+        showLoadingScreen_();
+
+        setTimeout(() => {
+          resetAuthLayers_();
+          // Step 4 — the loading screen spins until the data actually
+          // finishes loading, then it slides away to reveal the
+          // dashboard underneath.
+          dataPromise.then(() => {
+            hideLoadingScreen_();
+            restoreNavState_();
+          });
+        }, 800);
+      }, 800);
+    } else {
+      setTimeout(() => {
+        // Step 3b — fail: reset both layers, reveal the login form again.
+        resetAuthLayers_();
+        showToast((res && res.error) || 'Login failed');
+      }, 800);
+    }
   }).catch(err => {
-    loader.style.opacity = '0';
-    setTimeout(() => { loader.style.display = 'none'; }, 300);
-    apiError_('login', err);
+    showAuthResult_(false);
+    setTimeout(() => {
+      resetAuthLayers_();
+      apiError_('login', err);
+    }, 800);
+  });
+}
+
+// Reveals the loading screen (circular spinner) already in place —
+// it's simply sitting underneath as the green layer slides away, no
+// slide-in of its own.
+function showLoadingScreen_() {
+  const loader = document.getElementById('loadingScreen');
+  loader.classList.remove('away-left');
+  loader.style.transition = 'none';
+  loader.style.transform = 'translateX(0)';
+  loader.style.display = 'flex';
+  void loader.offsetHeight;
+  loader.style.transition = '';
+}
+
+// Slides the loading screen away to the left, revealing the dashboard
+// underneath, then hides it.
+function hideLoadingScreen_() {
+  const loader = document.getElementById('loadingScreen');
+  loader.classList.add('away-left');
+  setTimeout(() => {
+    loader.style.display = 'none';
+    loader.classList.remove('away-left');
+    loader.style.transform = '';
+  }, 800);
+}
+
+// Used on page refresh when an unexpired session is found in storage —
+// no login animation has run, so this shows the spinner right away.
+function beginDataLoad_() {
+  const loader = document.getElementById('loadingScreen');
+  loader.style.transform = 'translateX(0)';
+  loader.style.display = 'flex';
+
+  loadAllData().then(() => {
+    hideLoadingScreen_();
+    restoreNavState_();
+  }).catch(() => {
+    hideLoadingScreen_();
   });
 }
 
@@ -1128,7 +1312,8 @@ function uPP() {
   }
 }
 
-function sT(tn) {
+function sT(tn, opts) {
+  const skipScroll = opts && opts.skipScroll;
   SC.forEach(s => s.classList.remove('active'));
   const t = document.getElementById('screen-' + tn);
   if (t) t.classList.add('active');
@@ -1137,6 +1322,8 @@ function sT(tn) {
     const main = document.getElementById('shop-main');
     if (main) main.classList.add('active');
   }
+  saveNavState_(tn === 'shop' ? { tab: tn } : { tab: tn, shopSub: null });
+  if (skipScroll) return;
   if (tn === 'ai') { setTimeout(() => { MS.scrollTo({ top: MS.scrollHeight, behavior: 'smooth' }); CI.focus(); }, 100); }
   else MS.scrollTo({ top: 0, behavior: 'smooth' });
 }
@@ -1153,6 +1340,33 @@ NI.forEach(item => {
     requestAnimationFrame(ap);
   });
 });
+
+// Restore the tab (and, if it was Shop, the sub-screen like kitchen items
+// or stock) the user was last on, after a refresh — instead of always
+// landing back on Home.
+function restoreNavState_() {
+  const state = readNavState_();
+  if (!state || !state.tab) return;
+  const item = document.querySelector('.nav-item[data-tab="' + state.tab + '"]');
+  if (!item) return;
+
+  NI.forEach(i => i.classList.remove('active'));
+  item.classList.add('active');
+  sT(state.tab, { skipScroll: true });
+
+  // Same as the click handler: keep re-measuring the pill for a beat
+  // after restore, since right after a refresh/login the nav bar's
+  // layout (icons, fonts, slide-in transitions) may not have settled
+  // yet, so a single immediate uPP() call can grab stale dimensions
+  // and leave the pill mispositioned until the next tab click.
+  let st = performance.now();
+  function ap(t) { uPP(); if (t - st < 400) requestAnimationFrame(ap); }
+  requestAnimationFrame(ap);
+
+  if (state.tab === 'shop' && state.shopSub) {
+    openShopSub(state.shopSub, { skipSave: true });
+  }
+}
 
 function showToast(m) {
   T.textContent = m; T.style.opacity = '1'; T.style.transform = 'translateX(-50%) translateY(0)';
@@ -1221,7 +1435,20 @@ CI.addEventListener('input', () => { SB.disabled = !CI.value.trim(); });
 // ============================================================
 // INIT
 // ============================================================
-window.addEventListener('load', () => { uPP(); });
+window.addEventListener('load', () => {
+  uPP();
+
+  // If there's a valid (< 48h old) session, skip the login screen
+  // entirely and go straight into the data load. Otherwise show the
+  // login form like normal — an expired session is cleared and the
+  // user has to sign in again.
+  const session = readSession_();
+  if (session) {
+    currentUser = session.username;
+    hideLoginOverlay_();
+    beginDataLoad_();
+  }
+});
 window.addEventListener('resize', uPP);
 
 // Keep the menu/schedule ticks in sync with the clock, and pick up
