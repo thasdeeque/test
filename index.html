@@ -1173,6 +1173,110 @@ body {
   pointer-events: none;
   opacity: 0;
 }
+
+/* ============================================================
+   LOGIN AUTH ANIMATION
+   1) White layer slides UP from bottom, covering screen, with a
+      basic spinner in the center (right after button press).
+   2) On server response, a colored layer (green=ok, red=fail)
+      slides DOWN from the top, covering the white layer.
+   3) An icon (tick or cross) pops in on the colored layer.
+   4) success -> colored layer slides away to the LEFT, revealing
+      the app underneath.
+      fail -> colored+white layers are dismissed, revealing the
+      login form again.
+   ============================================================ */
+#authWhiteLayer {
+  position: fixed;
+  inset: 0;
+  z-index: 100000;
+  background: #ffffff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transform: translateY(100%);
+  transition: transform 0.8s cubic-bezier(0.65, 0, 0.35, 1);
+  pointer-events: none;
+}
+#authWhiteLayer.up {
+  transform: translateY(0%);
+  pointer-events: auto;
+}
+
+.auth-spinner {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  border: 3px solid rgba(0,0,0,0.08);
+  border-top-color: #1a1a1e;
+  animation: authSpin 0.7s linear infinite;
+}
+@keyframes authSpin {
+  to { transform: rotate(360deg); }
+}
+
+#authResultLayer {
+  position: fixed;
+  inset: 0;
+  z-index: 100001;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 22px;
+  transform: translateY(-100%);
+  transition: transform 0.8s cubic-bezier(0.65, 0, 0.35, 1);
+  pointer-events: none;
+}
+#authResultLayer.down {
+  transform: translateY(0%);
+  pointer-events: auto;
+}
+#authResultLayer.away-left {
+  transform: translateX(-100%);
+  transition: transform 0.8s cubic-bezier(0.65, 0, 0.35, 1);
+}
+#authResultLayer.success { background: #34c759; }
+#authResultLayer.fail { background: #ff3b30; }
+
+.auth-result-icon {
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  background: rgba(255,255,255,0.2);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transform: scale(0);
+  opacity: 0;
+  transition: transform 0.5s cubic-bezier(0.34, 1.56, 0.64, 1), opacity 0.4s ease;
+}
+.auth-result-icon.show {
+  transform: scale(1);
+  opacity: 1;
+}
+.auth-result-icon svg { stroke: #ffffff; }
+
+.auth-result-spinner {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  border: 3px solid rgba(255,255,255,0.3);
+  border-top-color: #ffffff;
+  animation: authSpin 0.7s linear infinite;
+  opacity: 0;
+  transition: opacity 0.5s ease;
+}
+.auth-result-spinner.show { opacity: 1; }
+
+.loading-screen-slide {
+  transform: translateX(0);
+  opacity: 1;
+  transition: transform 0.8s cubic-bezier(0.65, 0, 0.35, 1), opacity 0.8s cubic-bezier(0.65, 0, 0.35, 1);
+}
+.loading-screen-slide.away-left {
+  transform: translateX(-100%);
+}
 </style>
   <script src="https://unpkg.com/lucide@latest"></script>
   <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -1360,8 +1464,20 @@ body {
     </div>
   </div>
 
-  <!-- Full-screen loading screen -->
-  <div id="loadingScreen" style="
+  <!-- AUTH ANIMATION LAYERS -->
+  <div id="authWhiteLayer">
+    <div class="auth-spinner"></div>
+  </div>
+  <div id="authResultLayer">
+    <div class="auth-result-icon" id="authResultIcon">
+      <svg id="authTickIcon" xmlns="http://www.w3.org/2000/svg" width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" style="display:none"><polyline points="20 6 9 17 4 12"></polyline></svg>
+      <svg id="authCrossIcon" xmlns="http://www.w3.org/2000/svg" width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" style="display:none"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+    </div>
+    <div class="auth-result-spinner" id="authResultSpinner"></div>
+  </div>
+
+  <!-- Full-screen loading screen (data-fetch loader shown after auth success) -->
+  <div id="loadingScreen" class="loading-screen-slide" style="
     display: none;
     position: fixed;
     inset: 0;
@@ -1371,14 +1487,12 @@ body {
     align-items: center;
     justify-content: center;
     gap: 0;
-    opacity: 0;
-    transition: opacity 0.3s ease;
   ">
     <!-- Top decorative bar matching login card -->
     <div style="position: absolute; top: 0; left: 0; right: 0; height: 4px; background: #c9a96e;"></div>
 
     <!-- Center content -->
-    <div style="display: flex; flex-direction: column; align-items: center; gap: 20px;">
+    <div style="display: flex; flex-direction: column; align-items: center; gap: 22px;">
       <!-- Brand icon -->
       <div style="
         width: 72px;
@@ -1391,7 +1505,6 @@ body {
         justify-content: center;
         font-size: 32px;
         box-shadow: 0 8px 20px rgba(0,0,0,0.15);
-        animation: loadingPulse 1.5s ease-in-out infinite;
       ">📦</div>
 
       <!-- App name -->
@@ -1402,33 +1515,11 @@ body {
           font-weight: 800;
           letter-spacing: -0.5px;
           color: #0f0f11;
-          margin-bottom: 4px;
+          margin-bottom: 18px;
         ">Delivery Hub</div>
-        <div id="loadingText" style="
-          font-family: 'Inter', sans-serif;
-          font-size: 13px;
-          font-weight: 600;
-          color: #9a9aa3;
-          transition: opacity 0.2s ease;
-        ">Authenticating...</div>
-      </div>
 
-      <!-- Progress bar -->
-      <div style="
-        width: 200px;
-        height: 4px;
-        background: rgba(0,0,0,0.08);
-        border-radius: 4px;
-        overflow: hidden;
-        margin-top: 4px;
-      ">
-        <div id="loadingBar" style="
-          height: 100%;
-          width: 0%;
-          background: linear-gradient(90deg, #c9a96e, #e8c98a);
-          border-radius: 4px;
-          transition: width 0.4s cubic-bezier(0.25, 1, 0.5, 1);
-        "></div>
+        <!-- Classic spinner -->
+        <div class="basic-spinner"></div>
       </div>
     </div>
 
@@ -1443,12 +1534,21 @@ body {
     ">Kitchen Delivery Hub © 2026</div>
 
     <style>
-      @keyframes loadingPulse {
-        0%, 100% { transform: scale(1); box-shadow: 0 8px 20px rgba(0,0,0,0.15); }
-        50% { transform: scale(1.05); box-shadow: 0 12px 28px rgba(0,0,0,0.22); }
+      .basic-spinner {
+        width: 34px;
+        height: 34px;
+        margin: 0 auto;
+        border-radius: 50%;
+        border: 3px solid rgba(0,0,0,0.08);
+        border-top-color: #c9a96e;
+        animation: basicSpinnerSpin 0.7s linear infinite;
+      }
+      @keyframes basicSpinnerSpin {
+        to { transform: rotate(360deg); }
       }
     </style>
   </div>
+
 
 
   <!-- Login Toast -->
